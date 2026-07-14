@@ -64,7 +64,8 @@ public class CarrierVehicleTypeLoaderTest {
 		Assertions.assertEquals(30, vehicleTypeLoaded.getCostInformation().getCostsPerSecond(), MatsimTestUtils.EPSILON);
 
 		Assertions.assertEquals("gasoline", VehicleUtils.getHbefaTechnology(vehicleTypeLoaded.getEngineInformation()));
-		Assertions.assertEquals(0.02, VehicleUtils.getFuelConsumptionLitersPerMeter(vehicleTypeLoaded.getEngineInformation()), MatsimTestUtils.EPSILON);
+		// [HAGRID] matsim core 2025.0-PR3552 predates VehicleUtils.get/setFuelConsumptionLitersPerMeter; access the attribute key directly
+		Assertions.assertEquals(0.02, (Double) vehicleTypeLoaded.getEngineInformation().getAttributes().getAttribute("fuelConsumptionLitersPerMeter"), MatsimTestUtils.EPSILON);
 	}
 
 	@Test
@@ -84,7 +85,7 @@ public class CarrierVehicleTypeLoaderTest {
 		Assertions.assertEquals(30, vehicleTypeLoaded.getCostInformation().getCostsPerSecond(), MatsimTestUtils.EPSILON);
 
 		Assertions.assertEquals("gasoline", VehicleUtils.getHbefaTechnology(vehicleTypeLoaded.getEngineInformation()));
-		Assertions.assertEquals(0.02, VehicleUtils.getFuelConsumptionLitersPerMeter(vehicleTypeLoaded.getEngineInformation()), MatsimTestUtils.EPSILON);
+		Assertions.assertEquals(0.02, (Double) vehicleTypeLoaded.getEngineInformation().getAttributes().getAttribute("fuelConsumptionLitersPerMeter"), MatsimTestUtils.EPSILON);
 
 	}
 

@@ -100,7 +100,8 @@ public class CarrierControllerUtilsTest{
 		final Id<VehicleType> vehicleTypeId = Id.create( "gridType", VehicleType.class );
 		VehicleType carrierVehType = VehicleUtils.getFactory().createVehicleType( vehicleTypeId );
 		VehicleUtils.setHbefaTechnology(carrierVehType.getEngineInformation(), "diesel");
-		VehicleUtils.setFuelConsumptionLitersPerMeter(carrierVehType.getEngineInformation(), 0.015);
+		// [HAGRID] matsim core 2025.0-PR3552 predates VehicleUtils.get/setFuelConsumptionLitersPerMeter; access the attribute key directly
+		carrierVehType.getEngineInformation().getAttributes().putAttribute("fuelConsumptionLitersPerMeter", 0.015);
 		VehicleCapacity vehicleCapacity = carrierVehType.getCapacity();
 		vehicleCapacity.setOther( 3 );
 		CostInformation costInfo = carrierVehType.getCostInformation();
@@ -220,7 +221,7 @@ public class CarrierControllerUtilsTest{
 			Assertions.assertEquals(0.001, carrierVehicleType.getCostInformation().getCostsPerSecond(), 0.0 );
 			Assertions.assertEquals(10, carrierVehicleType.getMaximumVelocity(), 0.0);
 			Assertions.assertEquals("diesel", VehicleUtils.getHbefaTechnology(carrierVehicleType.getEngineInformation()));
-			Assertions.assertEquals(0.015, VehicleUtils.getFuelConsumptionLitersPerMeter(carrierVehicleType.getEngineInformation()), 0.0);
+			Assertions.assertEquals(0.015, (Double) carrierVehicleType.getEngineInformation().getAttributes().getAttribute("fuelConsumptionLitersPerMeter"), 0.0);
 		}
 
 		Assertions.assertEquals(FleetSize.INFINITE, carrierWShipmentsOnlyFromCarrierWShipments.getCarrierCapabilities().getFleetSize());
@@ -232,7 +233,7 @@ public class CarrierControllerUtilsTest{
 			Assertions.assertEquals(0.001, carrierVehicleType.getCostInformation().getCostsPerSecond(), 0.0 );
 			Assertions.assertEquals(10, carrierVehicleType.getMaximumVelocity(), 0.0);
 			Assertions.assertEquals("diesel", VehicleUtils.getHbefaTechnology(carrierVehicleType.getEngineInformation()));
-			Assertions.assertEquals(0.015, VehicleUtils.getFuelConsumptionLitersPerMeter(carrierVehicleType.getEngineInformation()), 0.0);		}
+			Assertions.assertEquals(0.015, (Double) carrierVehicleType.getEngineInformation().getAttributes().getAttribute("fuelConsumptionLitersPerMeter"), 0.0);		}
 	}
 
 	@Test

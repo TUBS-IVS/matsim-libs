@@ -379,7 +379,8 @@ public class MatsimTransformerTest {
 		vehicleType.getCapacity().setOther(50);
 		vehicleType.getCostInformation().setCostsPerMeter(10.0).setCostsPerSecond(5.0).setFixedCost(100.);
 		VehicleUtils.setHbefaTechnology(vehicleType.getEngineInformation(), "diesel");
-		VehicleUtils.setFuelConsumptionLitersPerMeter(vehicleType.getEngineInformation(), 0.015);
+		// [HAGRID] matsim core 2025.0-PR3552 predates VehicleUtils.get/setFuelConsumptionLitersPerMeter; access the attribute key directly
+		vehicleType.getEngineInformation().getAttributes().putAttribute("fuelConsumptionLitersPerMeter", 0.015);
 
 		return vehicleType;
 	}
@@ -414,7 +415,7 @@ public class MatsimTransformerTest {
 		assertEquals(5.0, vehicle.getType().getVehicleCostParams().perTransportTimeUnit, 0.0);
 		assertEquals(100.0, vehicle.getType().getVehicleCostParams().fix, 0.0);
 		assertEquals("diesel", VehicleUtils.getHbefaTechnology(((VehicleType)vehicle.getType().getUserData()).getEngineInformation()));
-		assertEquals(0.015, VehicleUtils.getFuelConsumptionLitersPerMeter(((VehicleType)vehicle.getType().getUserData()).getEngineInformation()));
+		assertEquals(0.015, (Double) ((VehicleType)vehicle.getType().getUserData()).getEngineInformation().getAttributes().getAttribute("fuelConsumptionLitersPerMeter"));
 		assertEquals(13.8, vehicle.getType().getMaxVelocity(), 0.0);
 
 		// check service data

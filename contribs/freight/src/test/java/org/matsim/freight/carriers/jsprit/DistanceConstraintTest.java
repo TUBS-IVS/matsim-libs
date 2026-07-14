@@ -368,7 +368,8 @@ public class DistanceConstraintTest {
 		VehicleType vehicleType_Diesel = VehicleUtils.createVehicleType(Id.create("DieselVehicle", VehicleType.class));
 		vehicleType_Diesel.getCostInformation().setCostsPerMeter(0.00055).setCostsPerSecond(0.008).setFixedCost(400.);
 		VehicleUtils.setHbefaTechnology(vehicleType_Diesel.getEngineInformation(), "diesel");
-		VehicleUtils.setFuelConsumptionLitersPerMeter(vehicleType_Diesel.getEngineInformation(), 0.0001625);
+		// [HAGRID] matsim core 2025.0-PR3552 predates VehicleUtils.get/setFuelConsumptionLitersPerMeter; access the attribute key directly
+		vehicleType_Diesel.getEngineInformation().getAttributes().putAttribute("fuelConsumptionLitersPerMeter", 0.0001625);
 		vehicleType_Diesel.setDescription("Carrier_Version4");
 		vehicleType_Diesel.getCapacity().setOther(40.);
 

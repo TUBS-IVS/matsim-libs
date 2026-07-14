@@ -87,7 +87,8 @@ public class CarrierControllerUtilsIT{
 		VehicleType carrierVehType = VehicleUtils.getFactory().createVehicleType( vehTypeId );
 		EngineInformation engineInformation = carrierVehType.getEngineInformation() ;
 		VehicleUtils.setHbefaTechnology(engineInformation, "diesel");
-		VehicleUtils.setFuelConsumptionLitersPerMeter(engineInformation, 0.015);
+		// [HAGRID] matsim core 2025.0-PR3552 predates VehicleUtils.get/setFuelConsumptionLitersPerMeter; access the attribute key directly
+		engineInformation.getAttributes().putAttribute("fuelConsumptionLitersPerMeter", 0.015);
 		VehicleCapacity capacity = carrierVehType.getCapacity() ;
 		capacity.setOther( 3. ) ;
 		CostInformation costInfo = carrierVehType.getCostInformation();
