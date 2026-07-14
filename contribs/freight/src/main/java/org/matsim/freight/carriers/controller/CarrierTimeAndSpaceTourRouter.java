@@ -146,7 +146,10 @@ public class CarrierTimeAndSpaceTourRouter{
 			prevLeg.setRoute(route);
 			return;
 		}
-		Path path = router.calcLeastCostPath(network.getLinks().get(fromLinkId), network.getLinks().get(toLinkId), prevLeg.getExpectedDepartureTime(), null, vehicle);
+		Path path = router.calcLeastCostPath(network.getLinks().get(fromLinkId).getToNode(), network.getLinks().get(toLinkId).getFromNode(), prevLeg.getExpectedDepartureTime(), null, vehicle);
+		if (path == null) {
+			throw new RuntimeException("No path found between " + fromLinkId + " and " + toLinkId + ". Network may be disconnected.");
+		}
 		double travelTime = path.travelTime;
 
 		/*
