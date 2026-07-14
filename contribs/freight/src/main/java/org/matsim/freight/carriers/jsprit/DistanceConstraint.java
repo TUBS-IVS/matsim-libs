@@ -83,7 +83,9 @@ import org.matsim.vehicles.VehicleUtils;
 			consumptionPerMeter = VehicleUtils
 				.getEnergyConsumptionKWhPerMeter(vehicleTypeOfNewVehicle.getEngineInformation());
 		else
-			consumptionPerMeter = VehicleUtils.getFuelConsumptionLitersPerMeter(vehicleTypeOfNewVehicle.getEngineInformation());
+			// [HAGRID] matsim core 2025.0-PR3552 predates VehicleUtils.getFuelConsumptionLitersPerMeter;
+			// read the same attribute key the 2025.0 helper uses
+			consumptionPerMeter = (Double) vehicleTypeOfNewVehicle.getEngineInformation().getAttributes().getAttribute("fuelConsumptionLitersPerMeter");
 
 		double currentDistance = calculateRouteDistance(context, newVehicle);
 		double currentRouteConsumption = currentDistance * (consumptionPerMeter);

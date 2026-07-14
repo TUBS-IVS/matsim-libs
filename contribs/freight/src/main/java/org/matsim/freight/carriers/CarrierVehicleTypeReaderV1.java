@@ -73,7 +73,9 @@ class CarrierVehicleTypeReaderV1 extends MatsimXmlParser {
 		if(name.equals("engineInformation")){
 			EngineInformation engineInfo = this.currentType.getEngineInformation() ;
 			VehicleUtils.setHbefaTechnology(engineInfo, attributes.getValue( "fuelType"));
-			VehicleUtils.setFuelConsumptionLitersPerMeter(engineInfo, Double.parseDouble(attributes.getValue( "gasConsumption" )));
+			// [HAGRID] matsim core 2025.0-PR3552 predates VehicleUtils.setFuelConsumptionLitersPerMeter;
+			// write the same attribute key the 2025.0 helper uses
+			engineInfo.getAttributes().putAttribute("fuelConsumptionLitersPerMeter", Double.parseDouble(attributes.getValue( "gasConsumption" )));
 		}
 
 		if(name.equals("costInformation")){
