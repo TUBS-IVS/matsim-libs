@@ -511,7 +511,10 @@ public class NetworkBasedTransportCosts implements VRPTransportCosts {
 
 	public final Counter ttRequestedCounter;
 
-	private final Map<String, org.matsim.vehicles.Vehicle> matsimVehicles = new HashMap<>();
+	// [HAGRID] ConcurrentHashMap: filled lazily on the cost path (getMatsimVehicle), so parallel
+	// jsprit solves sharing one instance could lose entries or throw on a concurrent resize.
+	// Values derive from the type id alone, so the single-threaded behaviour is unchanged.
+	private final Map<String, org.matsim.vehicles.Vehicle> matsimVehicles = new ConcurrentHashMap<>();
 
 	/**
 	 * by default sets the {@link SpeedyALTFactory}
