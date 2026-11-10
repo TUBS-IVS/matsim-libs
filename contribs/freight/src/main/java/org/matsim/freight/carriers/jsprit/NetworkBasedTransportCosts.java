@@ -336,7 +336,24 @@ public class NetworkBasedTransportCosts implements VRPTransportCosts {
 
 		private int timeSliceWidth = Integer.MAX_VALUE;
 
-		private LeastCostPathCalculatorFactory leastCostPathCalculatorFactory = (network, travelCosts, travelTimes) -> new SpeedyALTFactory().createPathCalculator(network, travelCosts, travelTime);
+		private int maximumCacheEntries = 1_000_000;
+		private int maximumNeutralCacheEntries = 16_384;
+
+		/** Bound actual-vehicle results separately from jsprit's neutral neighborhood preparation.
+		 * Eviction only discards memoized values; it never changes routing inputs or time bins.
+		 */
+		public Builder setCacheLimits(int transportEntries, int neutralEntries) {
+			if (transportEntries <= 0 || neutralEntries <= 0) {
+				throw new IllegalArgumentException("Native cache limits must be positive");
+			}
+			maximumCacheEntries = transportEntries;
+			maximumNeutralCacheEntries = neutralEntries;
+			return this;
+		}
+
+
+		// Null selects a default factory owned by the built provider, not this reusable builder.
+		private LeastCostPathCalculatorFactory leastCostPathCalculatorFactory;
 
 //		private VehicleTypeDependentRoadPricingCalculator roadPricingScheme = new VehicleTypeDependentRoadPricingCalculator();
 		private RoadPricingScheme roadPricingScheme;
@@ -484,19 +501,56 @@ public class NetworkBasedTransportCosts implements VRPTransportCosts {
 
 	}
 
+	/** Read hits allocate nothing beyond the caller's key and never acquire the write lock.
+	 * A bounded insertion-order deque adds only references, not one queue object per hit.
+	 * Calculations happen outside the lock; concurrent winners retain putIfAbsent semantics.
+	 */
+	private static final class BoundedTransportCache {
+		private final ConcurrentHashMap<TransportDataKey, TransportData> values = new ConcurrentHashMap<>();
+		private final ArrayDeque<TransportDataKey> insertionOrder = new ArrayDeque<>();
+		private final int maximumEntries;
+
+		BoundedTransportCache(int maximumEntries) { this.maximumEntries = maximumEntries; }
+
+		TransportData get(TransportDataKey key) { return values.get(key); }
+
+		synchronized TransportData putIfAbsent(TransportDataKey key, TransportData value) {
+			TransportData existing = values.get(key);
+			if (existing != null) return existing;
+			if (values.size() >= maximumEntries) values.remove(insertionOrder.removeFirst());
+			values.put(key, value);
+			insertionOrder.addLast(key);
+			return null;
+		}
+	}
+
+	private static LeastCostPathCalculatorFactory sharedDefaultFactory() {
+		var factory = new SpeedyALTFactory();
+		return (network, disutility, time) -> {
+			synchronized (factory) {
+				return factory.createPathCalculator(network, disutility, time);
+			}
+		};
+	}
+
 	private final Network network;
 
 	/**
 	 * cost-cache to cache transport-costs and transport-times (see
 	 * {@link TransportData}) according to {@link TransportDataKey}
 	 */
-	private final ConcurrentHashMap<TransportDataKey, TransportData> costCache = new ConcurrentHashMap<>();
+	private final BoundedTransportCache costCache;
+	// Preparation's all-pairs scan must not evict vehicle-specific search results.
+	private final BoundedTransportCache neutralCostCache;
 
 	/**
-	 * caches leastCostPathCalculators according to
-	 * <code>Thread.currentThread().getId()</code>
+	 * Mutable search state belongs to its live worker. Finished threads must not
+	 * remain reachable through a provider-wide thread-ID map.
 	 */
-	private final ConcurrentHashMap<Long, LeastCostPathCalculator> routerCache = new ConcurrentHashMap<>();
+	// Weak keys handle forgotten worker objects; new workers also retire terminated threads
+	// even if an executor/debugger still holds their Thread objects. No thread-local value
+	// may keep this provider's network alive after the provider itself is discarded.
+	private final Map<Thread, LeastCostPathCalculator> workerRouters = new WeakHashMap<>();
 
 	private final TravelDisutility travelDisutility;
 
@@ -525,14 +579,21 @@ public class NetworkBasedTransportCosts implements VRPTransportCosts {
 
 	private final String defaultTypeId;
 
+	// Neutral query vehicles are internal immutable profiles; their start is not used for link routing.
+	private volatile VehicleImpl defaultVehicle;
+
 	private NetworkBasedTransportCosts(Builder builder) {
 		super();
 		this.travelDisutility = builder.finalDisutility;
 		this.travelTime = builder.travelTime;
 		this.network = builder.network;
-		this.leastCostPathCalculatorFactory = builder.leastCostPathCalculatorFactory;
+		this.leastCostPathCalculatorFactory = builder.leastCostPathCalculatorFactory != null
+				? builder.leastCostPathCalculatorFactory : sharedDefaultFactory();
+
 		this.timeSliceWidth = builder.timeSliceWidth;
 		this.defaultTypeId = builder.defaultTypeId;
+		this.costCache = new BoundedTransportCache(builder.maximumCacheEntries);
+		this.neutralCostCache = new BoundedTransportCache(builder.maximumNeutralCacheEntries);
 		this.ttMemorizedCounter = new Counter("#TransportCostValues cached ");
 		this.ttRequestedCounter = new Counter("numTravelCosts requested ");
 	}
@@ -562,7 +623,8 @@ public class NetworkBasedTransportCosts implements VRPTransportCosts {
 		int timeSlice = getTimeSlice(departureTime);
 		departureTime = timeSlice*timeSliceWidth;
 		TransportDataKey transportDataKey = makeKey(fromId.getId(), toId.getId(), timeSlice, typeId);
-		TransportData data = costCache.get(transportDataKey);
+		BoundedTransportCache cache = typeId.equals(defaultTypeId) ? neutralCostCache : costCache;
+		TransportData data = cache.get(transportDataKey);
 		double transportTime;
 
 		if (data != null) {
@@ -592,7 +654,7 @@ public class NetworkBasedTransportCosts implements VRPTransportCosts {
 				}
 				TransportData newData = new TransportData(path.travelCost + additionalCostTo,
 						path.travelTime + additionalTimeTo, travelDistance);
-				TransportData existingData = costCache.putIfAbsent(transportDataKey, newData);
+				TransportData existingData = cache.putIfAbsent(transportDataKey, newData);
 				ttMemorizedCounter.incCounter();
 				if (existingData == null) {
 					existingData = newData;
@@ -606,9 +668,19 @@ public class NetworkBasedTransportCosts implements VRPTransportCosts {
 	}
 
 	private VehicleImpl getDefaultVehicle(Location fromId) {
-		return VehicleImpl.Builder.newInstance("default").setType(
-				com.graphhopper.jsprit.core.problem.vehicle.VehicleTypeImpl.Builder.newInstance(defaultTypeId).build())
-				.setStartLocation(fromId).build();
+		VehicleImpl result = defaultVehicle;
+		if (result == null) {
+			synchronized (this) {
+				result = defaultVehicle;
+				if (result == null) {
+					result = VehicleImpl.Builder.newInstance("default").setType(
+							com.graphhopper.jsprit.core.problem.vehicle.VehicleTypeImpl.Builder.newInstance(defaultTypeId).build())
+							.setStartLocation(fromId).build();
+					defaultVehicle = result;
+				}
+			}
+		}
+		return result;
 	}
 
 	private void informEndCalc() {
@@ -645,22 +717,24 @@ public class NetworkBasedTransportCosts implements VRPTransportCosts {
 		if (vehicle == null) {
 			vehicle = getDefaultVehicle(fromId);
 		}
-		Id<Link> fromLinkId = Id.create(fromId.getId(), Link.class);
-		Id<Link> toLinkId = Id.create(toId.getId(), Link.class);
-		Link fromLink = network.getLinks().get(fromLinkId);
-		Link toLink = network.getLinks().get(toLinkId);
-		LeastCostPathCalculator router = createLeastCostPathCalculator();
 
 		int timeSlice = getTimeSlice(departureTime);
 		departureTime = timeSlice*timeSliceWidth;
 		String typeId = vehicle.getType().getTypeId();
 		TransportDataKey transportDataKey = makeKey(fromId.getId(), toId.getId(), timeSlice, typeId);
-		TransportData data = costCache.get(transportDataKey);
+		BoundedTransportCache cache = typeId.equals(defaultTypeId) ? neutralCostCache : costCache;
+		TransportData data = cache.get(transportDataKey);
 		double transportCost;
 
 		if (data != null) {
 			transportCost = data.transportCosts;
 		} else {
+			// Cached reads do not need link lookups or a per-thread path calculator.
+			Id<Link> fromLinkId = Id.create(fromId.getId(), Link.class);
+			Id<Link> toLinkId = Id.create(toId.getId(), Link.class);
+			Link fromLink = network.getLinks().get(fromLinkId);
+			Link toLink = network.getLinks().get(toLinkId);
+			LeastCostPathCalculator router = createLeastCostPathCalculator();
 			informStartCalc();
 			try {
 				org.matsim.vehicles.Vehicle matsimVehicle = getMatsimVehicle(vehicle);
@@ -678,7 +752,7 @@ public class NetworkBasedTransportCosts implements VRPTransportCosts {
 
 				TransportData newData = new TransportData(path.travelCost + additionalCostTo,
 						path.travelTime + additionalTimeTo, travelDistance);
-				TransportData existingData = costCache.putIfAbsent(transportDataKey, newData);
+				TransportData existingData = cache.putIfAbsent(transportDataKey, newData);
 				ttMemorizedCounter.incCounter();
 				if (existingData == null) {
 					// succeeded
@@ -716,7 +790,8 @@ public class NetworkBasedTransportCosts implements VRPTransportCosts {
 		int timeSlice = getTimeSlice(departureTime);
 		departureTime = timeSlice*timeSliceWidth;
 		TransportDataKey transportDataKey = makeKey(fromId.getId(), toId.getId(), timeSlice, typeId);
-		TransportData data = costCache.get(transportDataKey);
+		BoundedTransportCache cache = typeId.equals(defaultTypeId) ? neutralCostCache : costCache;
+		TransportData data = cache.get(transportDataKey);
 		double travelDistance;
 		if (data != null) {
 			travelDistance = data.transportDistance;
@@ -742,7 +817,7 @@ public class NetworkBasedTransportCosts implements VRPTransportCosts {
 				}
 				TransportData newData = new TransportData(path.travelCost + additionalCostTo,
 						path.travelTime + additionalTimeTo, travelDistance);
-				TransportData existingData = costCache.putIfAbsent(transportDataKey, newData);
+				TransportData existingData = cache.putIfAbsent(transportDataKey, newData);
 				ttMemorizedCounter.incCounter();
 				if (existingData == null) {
 					existingData = newData;
@@ -814,16 +889,16 @@ public class NetworkBasedTransportCosts implements VRPTransportCosts {
 	}
 
 	private LeastCostPathCalculator createLeastCostPathCalculator() {
-		LeastCostPathCalculator router = routerCache.get(Thread.currentThread().threadId());
-		if (router == null) {
-			LeastCostPathCalculator newRouter = leastCostPathCalculatorFactory.createPathCalculator(network,
-					travelDisutility, travelTime);
-			router = routerCache.putIfAbsent(Thread.currentThread().threadId(), newRouter);
+		synchronized (workerRouters) {
+			Thread worker = Thread.currentThread();
+			LeastCostPathCalculator router = workerRouters.get(worker);
 			if (router == null) {
-				router = newRouter;
+				workerRouters.keySet().removeIf(thread -> !thread.isAlive());
+				router = leastCostPathCalculatorFactory.createPathCalculator(network, travelDisutility, travelTime);
+				workerRouters.put(worker, router);
 			}
+			return router;
 		}
-		return router;
 	}
 
 	private int getTimeSlice(double time) {

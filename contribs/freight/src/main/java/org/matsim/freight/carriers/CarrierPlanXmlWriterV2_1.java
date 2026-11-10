@@ -55,6 +55,7 @@ import org.matsim.vehicles.VehicleType;
 	private static final  Logger logger = LogManager.getLogger(CarrierPlanXmlWriterV2_1.class);
 
 	private final Collection<Carrier> carriers;
+	private final boolean preciseTimes;
 
 	private final AttributesXmlWriterDelegate attributesWriter = new AttributesXmlWriterDelegate();
 
@@ -65,8 +66,13 @@ import org.matsim.vehicles.VehicleType;
 	 * @param carriers to be written
 	 */
 	public CarrierPlanXmlWriterV2_1(Carriers carriers) {
+		this(carriers, false);
+	}
+
+	CarrierPlanXmlWriterV2_1(Carriers carriers, boolean preciseTimes) {
 		super();
 		this.carriers = carriers.getCarriers().values();
+		this.preciseTimes = preciseTimes;
 	}
 
 	@Inject
@@ -199,7 +205,7 @@ import org.matsim.vehicles.VehicleType;
 	}
 
 	private String getTime(double time) {
-		return Time.writeTime(time);
+		return preciseTimes ? Double.toString(time) : Time.writeTime(time);
 	}
 
 	private void writePlans(Carrier carrier, BufferedWriter writer)
@@ -249,13 +255,13 @@ import org.matsim.vehicles.VehicleType;
 				));
 				this.writeStartTag(ACTIVITY, List.of(
 						createTuple(TYPE, CarrierConstants.START),
-						createTuple(END_TIME, Time.writeTime(tour.getDeparture()))), true
+						createTuple(END_TIME, getTime(tour.getDeparture()))), true
 				);
 				for (Tour.TourElement tourElement : tour.getTour().getTourElements()) {
 					if (tourElement instanceof Tour.Leg leg) {
 						this.writeStartTag(LEG, List.of(
-								createTuple(EXPECTED_DEP_TIME, Time.writeTime(leg.getExpectedDepartureTime())),
-								createTuple(EXPECTED_TRANSP_TIME, Time.writeTime(leg.getExpectedTransportTime()))
+								createTuple(EXPECTED_DEP_TIME, getTime(leg.getExpectedDepartureTime())),
+								createTuple(EXPECTED_TRANSP_TIME, getTime(leg.getExpectedTransportTime()))
 						));
 						if (leg.getRoute() != null) {
 							this.writeStartTag(ROUTE, null);
@@ -312,3 +318,4 @@ import org.matsim.vehicles.VehicleType;
 		this.writeEndTag(CARRIERS);
 	}
 }
+

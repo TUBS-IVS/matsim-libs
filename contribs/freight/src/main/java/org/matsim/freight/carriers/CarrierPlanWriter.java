@@ -46,6 +46,11 @@ public class CarrierPlanWriter {
 		this.writeV2_1(filename);
 	}
 
+	/** Writes decimal seconds without changing the legacy default time format. */
+	public void writePreciseTimes(String filename) {
+		this.writeV2_1(filename, true);
+	}
+
 	/**
 	 * Writes out the Carriers file in version 2.1.
 	 * Please use the method {@link #write(String)} to always ensure writing out to the newest format.
@@ -54,7 +59,11 @@ public class CarrierPlanWriter {
 	 * @param filename Name of the file that should be written.
 	 */
 	private void writeV2_1(String filename) {
-		CarrierPlanXmlWriterV2_1 writer = new CarrierPlanXmlWriterV2_1(this.carriers);
+		writeV2_1(filename, false);
+	}
+
+	private void writeV2_1(String filename, boolean preciseTimes) {
+		CarrierPlanXmlWriterV2_1 writer = new CarrierPlanXmlWriterV2_1(this.carriers, preciseTimes);
 		if (this.attributeConverters != null) {
 			writer.putAttributeConverters(this.attributeConverters);
 		}

@@ -45,6 +45,12 @@ public class CarrierPlanXmlReader implements MatsimReader {
 
 	private final CarriersPlanReader reader;
 
+    /** Preserve unwrapped input errors; a missing cause is not a schema-validation failure. */
+    private static boolean isMissingSchemaDeclaration(Exception error, String marker) {
+        Throwable cause = error.getCause();
+        return cause != null && cause.getMessage() != null && cause.getMessage().contains(marker);
+    }
+
 	public CarrierPlanXmlReader( final Carriers carriers, CarrierVehicleTypes carrierVehicleTypes ) {
 		this.reader = new CarriersPlanReader( carriers, carrierVehicleTypes ) ;
 	}
@@ -56,7 +62,7 @@ public class CarrierPlanXmlReader implements MatsimReader {
 		} catch (Exception e) {
 			log.info(MSG) ;
 			log.warn("### Exception found while trying to read CarrierPlan: Message: {} ; cause: {} ; class {}", e.getMessage(), e.getCause(), e.getClass());
-			if (e.getCause().getMessage().contains("cvc-elt.1")) { // "Cannot find the declaration of element" -> exception comes most probably because no validation information was found
+			if (isMissingSchemaDeclaration(e, "cvc-elt.1")) { // "Cannot find the declaration of element" -> exception comes most probably because no validation information was found
 				log.warn("read with validation = true failed. Try it again without validation... filename: {}", filename);
 				reader.setValidating(false);
 				reader.readFile(filename);
@@ -72,7 +78,7 @@ public class CarrierPlanXmlReader implements MatsimReader {
 		}  catch (Exception e) {
 			log.info(MSG) ;
 			log.warn("### Exception found while trying to read CarrierPlan: Message: {} ; cause: {} ; class {}", e.getMessage(), e.getCause(), e.getClass());
-			if (e.getCause().getMessage().contains("cvc-elt.1")) { // "Cannot find the declaration of element" -> exception comes most probably because no validation information was found
+			if (isMissingSchemaDeclaration(e, "cvc-elt.1")) { // "Cannot find the declaration of element" -> exception comes most probably because no validation information was found
 				log.warn("read with validation = true failed. Try it again without validation... url: {}", url.toString());
 				reader.setValidating(false);
 				reader.readURL(url);
@@ -89,7 +95,7 @@ public class CarrierPlanXmlReader implements MatsimReader {
 		} catch (Exception e) {
 			log.info(MSG) ;
 			log.warn("### Exception found while trying to read CarrierPlan: Message: {} ; cause: {} ; class {}", e.getMessage(), e.getCause(), e.getClass());
-			if (e.getCause().getMessage().contains("cvc-elt.1.a")) { // "Cannot find the declaration of element" -> exception comes most probably because no validation information was found
+			if (isMissingSchemaDeclaration(e, "cvc-elt.1.a")) { // "Cannot find the declaration of element" -> exception comes most probably because no validation information was found
 				log.warn("read with validation = true failed. Try it again without validation... ");
 				reader.setValidating(false);
 				reader.parse(inputStream);
